@@ -2,8 +2,8 @@ import pandas as pd
 from src.data_utiles import generar_etiquetas_pu
 from src.config import *
 from src.pu_model import entrenar_clasificador_pu, estimar_alpha, obtener_scores, estimar_probabilidad_real
-from src.mi_utils import calcular_mi_ranking
-from sklearn.datasets import make_classification
+from src.mi_utiles import calcular_mi_ranking
+from src.evaluacion import comparar_metodos, calcular_mi_naive, calcular_mi_real, calcular_varianza
 from sklearn.datasets import load_breast_cancer
 
 # Cargar dataset
@@ -41,5 +41,28 @@ mi_scores, ranking = calcular_mi_ranking(
 
 # Listado de features ordenados por MI
 print("\nRanking de características por MI (de mayor a menor):")
-for idx in ranking[:10]:
+for idx in ranking[:TOP_K]:
     print(f"Feature {idx} (MI={mi_scores[idx]:.4f})")
+
+# Comparar con otros métodos
+_, ranking_pu = calcular_mi_ranking(X, p_train, metodo="regresion")
+_, ranking_naive = calcular_mi_naive(X, S)
+_, ranking_real = calcular_mi_real(X, y)
+_, ranking_varianza = calcular_varianza(X)
+
+
+resultados = comparar_metodos(
+    X,
+    y,
+    S,
+    ranking_pu,
+    ranking_naive,
+    ranking_real,
+    ranking_varianza,
+    k=TOP_K
+)
+
+print("\nResultados AUC (Top", TOP_K, "features):\n")
+
+for metodo, auc in resultados.items():
+    print(f"{metodo}: {auc:.4f}")
