@@ -145,3 +145,9 @@ Thumbs.db
 .LSOverride
 *.swp
 .env.local
+
+# MLflow
+mlruns/
+.mlflow/
+mlflow.log
+mlartifacts/
