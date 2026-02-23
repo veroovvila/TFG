@@ -1,6 +1,8 @@
 import numpy as np
+import pandas as pd
 from sklearn.feature_selection import mutual_info_regression, mutual_info_classif
 from sklearn.preprocessing import KBinsDiscretizer
+import mlflow
 
 
 def calcular_mi_ranking(X, p_y, metodo="regresion", n_bins=10, random_state=42):
@@ -66,3 +68,30 @@ def calcular_mi_ranking(X, p_y, metodo="regresion", n_bins=10, random_state=42):
     ranking = np.argsort(mi_scores)[::-1]
 
     return mi_scores, ranking
+
+
+def guardar_ranking(nombre, ranking, feature_names, top_k, scores=None):
+    """
+    Guarda el top-k ranking como CSV y lo loggea en MLflow.
+    """
+    #TODO: compretar descripción
+    
+    top_features = ranking[:top_k]
+
+    if scores is not None:
+        valores = [scores[idx] for idx in top_features]
+    else:
+        valores = [None] * len(top_features)
+
+    df_rank = pd.DataFrame({
+        "feature_index": top_features,
+        "feature_name": [feature_names[idx] for idx in top_features],
+        "score": valores
+    })
+
+    filename = f"top_features_{nombre}.csv"
+    df_rank.to_csv(filename, index=False)
+    mlflow.log_artifact(filename)
+
+    print(f"\nTop {top_k} features - {nombre}:")
+    print(df_rank)

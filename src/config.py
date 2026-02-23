@@ -3,4 +3,4 @@ ALPHA_TRUE = 0.3
 
 TOP_K = 10
 EXPERIMENT_NAME = "breast_cancer"
-RUN_NAME = "v1.0"
+RUN_NAME = "v1.1"
