@@ -148,6 +148,7 @@ Thumbs.db
 
 # MLflow
 mlruns/
+mlflow.db
 .mlflow/
 mlflow.log
 mlartifacts/
