@@ -1,6 +1,6 @@
 RANDOM_STATE = 42
-ALPHA_TRUE = 0.3
+ALPHA_TRUE = 0.05
 
 TOP_K = 10
 EXPERIMENT_NAME = "breast_cancer"
-RUN_NAME = "v1.1"
+RUN_NAME = "v2.0"
