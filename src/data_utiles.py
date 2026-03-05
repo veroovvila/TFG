@@ -1,5 +1,33 @@
 import numpy as np
 
+def añadir_ruido_gaussiano(X, noise_level, random_state=None):
+    """
+    Añade ruido gaussiano a las features, proporcional a la std de cada columna.
+    Esto simula un escenario más exigente manteniendo la escala relativa.
+
+    Parámetros
+    ----------
+    X : np.ndarray, shape (n_muestras, n_features)
+        Matriz de features original.
+    noise_level : float
+        Fracción de la std de cada feature que se usa como desviación del ruido.
+        0 → sin ruido; 0.5 → 50 % de la std; 1.0 → 100 % de la std.
+    random_state : int o None
+        Semilla para reproducibilidad.
+
+    Devuelve
+    -------
+    X_noisy : np.ndarray
+        Matriz con ruido añadido (no modifica X original).
+    """
+    if noise_level == 0:
+        return X.copy()
+    rng = np.random.default_rng(random_state)
+    std_por_feature = np.std(X, axis=0)
+    ruido = rng.normal(0, noise_level * std_por_feature, size=X.shape)
+    return X + ruido
+
+
 def generar_etiquetas_pu(y, alpha, random_state=None):
     """
     Genera etiquetas Positive–Unlabeled (PU) a partir de etiquetas reales

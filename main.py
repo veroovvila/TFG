@@ -8,7 +8,7 @@ from sklearn.datasets import load_breast_cancer
 
 from sklearn.model_selection import train_test_split
 
-from src.data_utiles import generar_etiquetas_pu
+from src.data_utiles import generar_etiquetas_pu, añadir_ruido_gaussiano
 from src.config import *
 from src.pu_model import entrenar_clasificador_pu, estimar_alpha, obtener_scores, estimar_probabilidad_real
 from src.mi_utiles import calcular_mi_ranking, guardar_ranking
@@ -43,6 +43,7 @@ def main():
     with mlflow.start_run(run_name=RUN_NAME):
         mlflow.log_param("dataset", "breast_cancer")
         mlflow.log_param("run_mode", RUN_MODE)
+        mlflow.log_param("noise_level", NOISE_LEVEL)
         if RUN_MODE != 'sweep':
             mlflow.log_param("alpha_true", ALPHA_TRUE)
             mlflow.log_param("random_state", RANDOM_STATE)
@@ -52,6 +53,9 @@ def main():
 
         for alpha in alphas:
             for seed in seeds:
+                # Añadir ruido gaussiano a X para este seed (noise_level=0 → sin cambios)
+                X_noisy = añadir_ruido_gaussiano(X, NOISE_LEVEL, random_state=seed)
+
                 # Generar escenario PU
                 S = generar_etiquetas_pu(y, alpha, random_state=seed)
                 if RUN_MODE == 'single':
@@ -59,21 +63,21 @@ def main():
                     mlflow.log_metric("n_unlabeled", int(len(S) - sum(S)))
 
                 # Entrenar modelo PU
-                modelo = entrenar_clasificador_pu(X, S, random_state=seed)
+                modelo = entrenar_clasificador_pu(X_noisy, S, random_state=seed)
                 if RUN_MODE == 'single':
                     mlflow.sklearn.log_model(modelo, "pu_model")
 
-                # Estimar alpha (sobre todo X; el modelo PU usa S, no y)
-                scores = obtener_scores(modelo, X)
+                # Estimar alpha (sobre todo X_noisy; el modelo PU usa S, no y)
+                scores = obtener_scores(modelo, X_noisy)
                 alpha_hat = estimar_alpha(scores, S)
                 if RUN_MODE == 'single':
                     mlflow.log_metric("alpha_estimated", float(alpha_hat))
 
-                # Probabilidad real estimada sobre todo X; split train/test en un solo paso
+                # Probabilidad real estimada sobre todo X_noisy; split train/test en un solo paso
                 # para garantizar alineación. Rankings se calcularán SOLO sobre train.
                 p_y = estimar_probabilidad_real(scores, alpha_hat)
                 X_train, X_test, y_train, y_test, S_train, S_test, p_y_train, _ = \
-                    train_test_split(X, y, S, p_y, test_size=0.3, random_state=seed, stratify=y)
+                    train_test_split(X_noisy, y, S, p_y, test_size=0.3, random_state=seed, stratify=y)
                 mi_scores, ranking = calcular_mi_ranking(
                     X_train, p_y_train, metodo="regresion", random_state=seed
                 )
