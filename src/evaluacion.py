@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.stats import spearmanr
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -97,3 +98,18 @@ def comparar_metodos(
     )
 
     return resultados
+
+
+def spearman_rankings(ranking_a, ranking_b):
+    """
+    Calcula la correlación de Spearman entre dos rankings completos.
+    ranking_a, ranking_b: arrays de índices ordenados de mayor a menor importancia.
+    Devuelve un float en [-1, 1]; 1 = rankings idénticos.
+    """
+    n = len(ranking_a)
+    pos_a = np.empty(n, dtype=float)
+    pos_b = np.empty(n, dtype=float)
+    pos_a[ranking_a] = np.arange(n)
+    pos_b[ranking_b] = np.arange(n)
+    corr, _ = spearmanr(pos_a, pos_b)
+    return float(corr)

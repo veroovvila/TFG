@@ -11,4 +11,4 @@ SWEEP_SEEDS = [0, 1, 2, 3, 4]
 # Parámetros generales
 TOP_K = 10
 EXPERIMENT_NAME = "breast_cancer"
-RUN_NAME = "v2.2.0"
+RUN_NAME = "v2.1.2"

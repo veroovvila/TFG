@@ -12,11 +12,21 @@ from src.data_utiles import generar_etiquetas_pu
 from src.config import *
 from src.pu_model import entrenar_clasificador_pu, estimar_alpha, obtener_scores, estimar_probabilidad_real
 from src.mi_utiles import calcular_mi_ranking, guardar_ranking
-from src.evaluacion import comparar_metodos, calcular_mi_naive, calcular_mi_real, calcular_varianza
+from src.evaluacion import comparar_metodos, calcular_mi_naive, calcular_mi_real, calcular_varianza, spearman_rankings
 
 
 def _topk_overlap(ranking_a, ranking_b, k):
     return len(set(ranking_a[:k]) & set(ranking_b[:k]))
+
+
+def _ranking_instability(rankings_list):
+    """Devuelve la inestabilidad media del ranking entre semillas:
+    std promedio de la posición de cada feature a lo largo de las semillas."""
+    n = len(rankings_list[0])
+    pos_matrix = np.zeros((len(rankings_list), n))
+    for i, r in enumerate(rankings_list):
+        pos_matrix[i, r] = np.arange(n)
+    return float(np.mean(np.std(pos_matrix, axis=0)))
 
 
 def main():
@@ -38,6 +48,7 @@ def main():
             mlflow.log_param("random_state", RANDOM_STATE)
 
         rows = []  # acumula resultados por iteración (sweep)
+        rankings_by_alpha = {}  # {alpha: {'pu': [], 'naive': [], 'real': [], 'var': []}}
 
         for alpha in alphas:
             for seed in seeds:
@@ -94,6 +105,19 @@ def main():
                     overlap_naive = _topk_overlap(ranking_naive, ranking_real, TOP_K)
                     overlap_pu    = _topk_overlap(ranking, ranking_real, TOP_K)
 
+                    spearman_naive = spearman_rankings(ranking_naive, ranking_real)
+                    spearman_pu    = spearman_rankings(ranking,       ranking_real)
+                    spearman_var   = spearman_rankings(ranking_var,   ranking_real)
+                    spearman_real  = 1.0  # MI_real comparado consigo mismo, siempre 1
+
+                    # Acumular rankings completos para medir estabilidad entre semillas
+                    if alpha not in rankings_by_alpha:
+                        rankings_by_alpha[alpha] = {'pu': [], 'naive': [], 'real': [], 'var': []}
+                    rankings_by_alpha[alpha]['pu'].append(ranking)
+                    rankings_by_alpha[alpha]['naive'].append(ranking_naive)
+                    rankings_by_alpha[alpha]['real'].append(ranking_real)
+                    rankings_by_alpha[alpha]['var'].append(ranking_var)
+
                     # Comparar métodos: train para selección y entrenamiento, test para AUC
                     aucs = comparar_metodos(
                         X_train, X_test, y_train, y_test,
@@ -107,6 +131,10 @@ def main():
                         "alpha_hat":          float(alpha_hat),
                         "overlap_naive":      int(overlap_naive),
                         "overlap_pu":         float(overlap_pu),
+                        "spearman_naive":     float(spearman_naive),
+                        "spearman_pu":        float(spearman_pu),
+                        "spearman_var":       float(spearman_var),
+                        "spearman_real":      float(spearman_real),
                         "auc_PU_corregido":   float(aucs["PU_corregido"]),
                         "auc_MI_naive":       float(aucs["MI_naive"]),
                         "auc_MI_real":        float(aucs["MI_real"]),
@@ -117,13 +145,34 @@ def main():
         if RUN_MODE == 'sweep':
             df = pd.DataFrame(rows)
             summary = df.groupby('alpha_true').agg(
-                alpha_hat_mean=    ('alpha_hat',     'mean'),
-                alpha_hat_std=     ('alpha_hat',     'std'),
-                overlap_naive_mean=('overlap_naive', 'mean'),
-                overlap_naive_std= ('overlap_naive', 'std'),
-                overlap_pu_mean=   ('overlap_pu',    'mean'),
-                overlap_pu_std=    ('overlap_pu',    'std'),
+                alpha_hat_mean=      ('alpha_hat',      'mean'),
+                alpha_hat_std=       ('alpha_hat',      'std'),
+                overlap_naive_mean=  ('overlap_naive',  'mean'),
+                overlap_naive_std=   ('overlap_naive',  'std'),
+                overlap_pu_mean=     ('overlap_pu',     'mean'),
+                overlap_pu_std=      ('overlap_pu',     'std'),
+                spearman_naive_mean= ('spearman_naive', 'mean'),
+                spearman_naive_std=  ('spearman_naive', 'std'),
+                spearman_pu_mean=    ('spearman_pu',    'mean'),
+                spearman_pu_std=     ('spearman_pu',    'std'),
+                spearman_var_mean=   ('spearman_var',   'mean'),
+                spearman_var_std=    ('spearman_var',   'std'),
+                spearman_real_mean=  ('spearman_real',  'mean'),
+                spearman_real_std=   ('spearman_real',  'std'),
             ).reset_index()
+
+            # Estabilidad del ranking por alpha (std promedio de posición entre semillas)
+            stability_rows = []
+            for alpha_val, mrankings in sorted(rankings_by_alpha.items()):
+                stability_rows.append({
+                    'alpha_true':      alpha_val,
+                    'stability_pu':    _ranking_instability(mrankings['pu']),
+                    'stability_naive': _ranking_instability(mrankings['naive']),
+                    'stability_real':  _ranking_instability(mrankings['real']),
+                    'stability_var':   _ranking_instability(mrankings['var']),
+                })
+            stability_df = pd.DataFrame(stability_rows)
+            summary = summary.merge(stability_df, on='alpha_true')
 
             df.to_csv('alpha_sweep_runs.csv',    index=False)
             summary.to_csv('alpha_sweep_summary.csv', index=False)
@@ -138,12 +187,16 @@ def main():
 
             for _, row in summary.iterrows():
                 a = row['alpha_true']
-                mlflow.log_metric(f'alpha_{a}_hat_mean',           float(row['alpha_hat_mean']))
-                mlflow.log_metric(f'alpha_{a}_hat_std',            float(row['alpha_hat_std']))
-                mlflow.log_metric(f'alpha_{a}_overlap_naive_mean', float(row['overlap_naive_mean']))
-                mlflow.log_metric(f'alpha_{a}_overlap_pu_mean',    float(row['overlap_pu_mean']))
+                mlflow.log_metric(f'alpha_{a}_hat_mean',             float(row['alpha_hat_mean']))
+                mlflow.log_metric(f'alpha_{a}_hat_std',              float(row['alpha_hat_std']))
+                mlflow.log_metric(f'alpha_{a}_overlap_naive_mean',   float(row['overlap_naive_mean']))
+                mlflow.log_metric(f'alpha_{a}_overlap_pu_mean',      float(row['overlap_pu_mean']))
+                mlflow.log_metric(f'alpha_{a}_spearman_naive_mean',  float(row['spearman_naive_mean']))
+                mlflow.log_metric(f'alpha_{a}_spearman_pu_mean',     float(row['spearman_pu_mean']))
+                mlflow.log_metric(f'alpha_{a}_stability_pu',         float(row['stability_pu']))
+                mlflow.log_metric(f'alpha_{a}_stability_naive',      float(row['stability_naive']))
 
-            # Gráfico AUC vs alpha por método
+            # --- Gráfico 1: AUC vs alpha por método ---
             metodos = ['PU_corregido', 'MI_naive', 'MI_real', 'Varianza']
             auc_summary = df.groupby('alpha_true')[
                 [f'auc_{m}' for m in metodos]
@@ -163,11 +216,56 @@ def main():
             ax.legend()
             ax.grid(True, linestyle='--', alpha=0.5)
             fig.tight_layout()
-
-            plot_path = 'auc_vs_alpha.png'
-            fig.savefig(plot_path, dpi=150)
+            fig.savefig('auc_vs_alpha.png', dpi=150)
             plt.close(fig)
-            mlflow.log_artifact(plot_path)
+            mlflow.log_artifact('auc_vs_alpha.png')
+
+            # --- Gráfico 2: Correlación de Spearman vs alpha ---
+            fig2, ax2 = plt.subplots(figsize=(8, 5))
+            for label, col_mean, col_std in [
+                ('MI_real (ref.)', 'spearman_real_mean',  'spearman_real_std'),
+                ('PU_corregido',   'spearman_pu_mean',    'spearman_pu_std'),
+                ('MI_naive',       'spearman_naive_mean', 'spearman_naive_std'),
+                ('Varianza',       'spearman_var_mean',   'spearman_var_std'),
+            ]:
+                means = summary[col_mean].values
+                stds  = summary[col_std].values
+                x     = summary['alpha_true'].values
+                ax2.plot(x, means, marker='o', label=label)
+                ax2.fill_between(x, means - stds, means + stds, alpha=0.15)
+
+            ax2.set_xlabel('Alpha verdadero')
+            ax2.set_ylabel('Correlación de Spearman con MI_real')
+            ax2.set_title('Correlación de Spearman vs Alpha')
+            ax2.set_ylim(0, 1)
+            ax2.legend()
+            ax2.grid(True, linestyle='--', alpha=0.5)
+            fig2.tight_layout()
+            fig2.savefig('spearman_vs_alpha.png', dpi=150)
+            plt.close(fig2)
+            mlflow.log_artifact('spearman_vs_alpha.png')
+
+            # --- Gráfico 3: Estabilidad del ranking vs alpha ---
+            fig3, ax3 = plt.subplots(figsize=(8, 5))
+            for label, col in [
+                ('PU_corregido', 'stability_pu'),
+                ('MI_naive',     'stability_naive'),
+                ('MI_real',      'stability_real'),
+                ('Varianza',     'stability_var'),
+            ]:
+                ax3.plot(stability_df['alpha_true'].values,
+                         stability_df[col].values,
+                         marker='o', label=label)
+
+            ax3.set_xlabel('Alpha verdadero')
+            ax3.set_ylabel('Inestabilidad (std promedio de posición entre semillas)')
+            ax3.set_title('Estabilidad del ranking vs Alpha')
+            ax3.legend()
+            ax3.grid(True, linestyle='--', alpha=0.5)
+            fig3.tight_layout()
+            fig3.savefig('stability_vs_alpha.png', dpi=150)
+            plt.close(fig3)
+            mlflow.log_artifact('stability_vs_alpha.png')
 
             print('\nAlpha sweep - runs saved to alpha_sweep_runs.csv')
             print('Summary saved to alpha_sweep_summary.csv\n')
