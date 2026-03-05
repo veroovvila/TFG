@@ -41,9 +41,36 @@ def main():
     mlflow.set_experiment(EXPERIMENT_NAME)
 
     with mlflow.start_run(run_name=RUN_NAME):
-        mlflow.log_param("dataset", "breast_cancer")
-        mlflow.log_param("run_mode", RUN_MODE)
+        # Estructura del dataset
+        n_samples, n_features = X.shape
+        n_positives = int(y.sum())
+        n_negatives = int((y == 0).sum())
+        class_balance = round(n_positives / n_samples, 4) # proporción de positivos (que tan minoritaria es la clase positiva)
+
+        mlflow.log_param("dataset",            "breast_cancer")
+        mlflow.log_param("n_samples",          n_samples)
+        mlflow.log_param("n_features",         n_features)
+        mlflow.log_param("n_positives",        n_positives)
+        mlflow.log_param("n_negatives",        n_negatives)
+        mlflow.log_param("class_balance",      class_balance)
+
+        # Estadísticas descriptivas de features (antes de ruido) 
+        stats = pd.DataFrame({
+            "feature":  feature_names,
+            "mean":     np.mean(X, axis=0),
+            "std":      np.std(X, axis=0),
+            "min":      np.min(X, axis=0),
+            "max":      np.max(X, axis=0),
+            "median":   np.median(X, axis=0),
+        })
+        stats_path = "dataset_feature_stats.csv"
+        stats.to_csv(stats_path, index=False)
+        mlflow.log_artifact(stats_path)
+
+        # Configuración del experimento 
+        mlflow.log_param("run_mode",    RUN_MODE)
         mlflow.log_param("noise_level", NOISE_LEVEL)
+        mlflow.log_param("top_k",       TOP_K)
         if RUN_MODE != 'sweep':
             mlflow.log_param("alpha_true", ALPHA_TRUE)
             mlflow.log_param("random_state", RANDOM_STATE)
@@ -183,7 +210,6 @@ def main():
 
             mlflow.log_param('sweep_alphas', str(alphas))
             mlflow.log_param('sweep_seeds',  str(seeds))
-            mlflow.log_param('top_k',        int(TOP_K))
             mlflow.log_param('n_runs',       int(len(rows)))
 
             mlflow.log_artifact('alpha_sweep_runs.csv')
