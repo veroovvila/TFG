@@ -3,33 +3,23 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import roc_auc_score
-from sklearn.model_selection import train_test_split
 from sklearn.feature_selection import mutual_info_classif
 
-def evaluar_clasificador_final(X, y_real, ranking, k, random_state=42):
+def evaluar_clasificador_final(X_train, X_test, y_train, y_test, ranking, k):
     """
-    Entrena un clasificador final usando las top-k características
-    y devuelve el AUC en test.
+    Entrena un clasificador final usando las top-k características (ranking calculado
+    exclusivamente sobre train) y evalúa el AUC sobre test.
+    El split debe realizarse antes de llamar a esta función.
     """
-
-    # Seleccionar top-k features
     features_seleccionadas = ranking[:k]
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X[:, features_seleccionadas],
-        y_real,
-        test_size=0.3,
-        random_state=random_state,
-        stratify=y_real
-    )
 
     modelo = Pipeline([
         ("escalado", StandardScaler()),
         ("clasificador", LogisticRegression(max_iter=1000))
     ])
 
-    modelo.fit(X_train, y_train)
-    probabilidades = modelo.predict_proba(X_test)[:, 1]
+    modelo.fit(X_train[:, features_seleccionadas], y_train)
+    probabilidades = modelo.predict_proba(X_test[:, features_seleccionadas])[:, 1]
 
     auc = roc_auc_score(y_test, probabilidades)
 
@@ -75,9 +65,7 @@ def calcular_varianza(X):
 
 
 def comparar_metodos(
-    X,
-    y_real,
-    S,
+    X_train, X_test, y_train, y_test,
     ranking_pu,
     ranking_naive,
     ranking_real,
@@ -86,24 +74,26 @@ def comparar_metodos(
 ):
     """
     Compara distintos métodos de selección usando AUC.
+    Los rankings deben estar calculados exclusivamente sobre X_train.
+    El AUC se evalúa sobre X_test.
     """
 
     resultados = {}
 
     resultados["PU_corregido"] = evaluar_clasificador_final(
-        X, y_real, ranking_pu, k
+        X_train, X_test, y_train, y_test, ranking_pu, k
     )
 
     resultados["MI_naive"] = evaluar_clasificador_final(
-        X, y_real, ranking_naive, k
+        X_train, X_test, y_train, y_test, ranking_naive, k
     )
 
     resultados["MI_real"] = evaluar_clasificador_final(
-        X, y_real, ranking_real, k
+        X_train, X_test, y_train, y_test, ranking_real, k
     )
 
     resultados["Varianza"] = evaluar_clasificador_final(
-        X, y_real, ranking_varianza, k
+        X_train, X_test, y_train, y_test, ranking_varianza, k
     )
 
     return resultados

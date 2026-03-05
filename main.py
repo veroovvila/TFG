@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 import mlflow
 from sklearn.datasets import load_breast_cancer
 
+from sklearn.model_selection import train_test_split
+
 from src.data_utiles import generar_etiquetas_pu
 from src.config import *
 from src.pu_model import entrenar_clasificador_pu, estimar_alpha, obtener_scores, estimar_probabilidad_real
@@ -31,8 +33,9 @@ def main():
     with mlflow.start_run(run_name=RUN_NAME):
         mlflow.log_param("dataset", "breast_cancer")
         mlflow.log_param("run_mode", RUN_MODE)
-        mlflow.log_param("alpha_true", str(alphas) if RUN_MODE == 'sweep' else ALPHA_TRUE)
-        mlflow.log_param("random_state", str(seeds)  if RUN_MODE == 'sweep' else RANDOM_STATE)
+        if RUN_MODE != 'sweep':
+            mlflow.log_param("alpha_true", ALPHA_TRUE)
+            mlflow.log_param("random_state", RANDOM_STATE)
 
         rows = []  # acumula resultados por iteración (sweep)
 
@@ -49,22 +52,24 @@ def main():
                 if RUN_MODE == 'single':
                     mlflow.sklearn.log_model(modelo, "pu_model")
 
-                # Estimar alpha
+                # Estimar alpha (sobre todo X; el modelo PU usa S, no y)
                 scores = obtener_scores(modelo, X)
                 alpha_hat = estimar_alpha(scores, S)
                 if RUN_MODE == 'single':
                     mlflow.log_metric("alpha_estimated", float(alpha_hat))
 
-                # Rankings
-                try:
-                    p_train = estimar_probabilidad_real(scores, alpha_hat)
-                    mi_scores, ranking = calcular_mi_ranking(X, p_train, metodo="regresion", random_state=seed)
-                except Exception:
-                    ranking = np.array([])
+                # Probabilidad real estimada sobre todo X; split train/test en un solo paso
+                # para garantizar alineación. Rankings se calcularán SOLO sobre train.
+                p_y = estimar_probabilidad_real(scores, alpha_hat)
+                X_train, X_test, y_train, y_test, S_train, S_test, p_y_train, _ = \
+                    train_test_split(X, y, S, p_y, test_size=0.3, random_state=seed, stratify=y)
+                mi_scores, ranking = calcular_mi_ranking(
+                    X_train, p_y_train, metodo="regresion", random_state=seed
+                )
 
-                mi_naive_scores, ranking_naive = calcular_mi_naive(X, S)
-                mi_real_scores,  ranking_real  = calcular_mi_real(X, y)
-                var_scores,      ranking_var   = calcular_varianza(X)
+                mi_naive_scores, ranking_naive = calcular_mi_naive(X_train, S_train)
+                mi_real_scores,  ranking_real  = calcular_mi_real(X_train, y_train)
+                var_scores,      ranking_var   = calcular_varianza(X_train)
 
                 if RUN_MODE == 'single':
                     guardar_ranking("PU_corregido", ranking,       feature_names, TOP_K, mi_scores)
@@ -72,9 +77,11 @@ def main():
                     guardar_ranking("MI_real",      ranking_real,  feature_names, TOP_K, mi_real_scores)
                     guardar_ranking("Varianza",     ranking_var,   feature_names, TOP_K, var_scores)
 
-                    # Comparar métodos
+                    # Comparar métodos: train para selección y entrenamiento, test para AUC
                     resultados = comparar_metodos(
-                        X, y, S, ranking, ranking_naive, ranking_real, ranking_var, k=TOP_K
+                        X_train, X_test, y_train, y_test,
+                        ranking,
+                        ranking_naive, ranking_real, ranking_var, k=TOP_K
                     )
                     for metodo, auc in resultados.items():
                         mlflow.log_metric(f"AUC_{metodo}", float(auc))
@@ -85,11 +92,12 @@ def main():
 
                 else:  # sweep: acumular métricas de overlap y AUC
                     overlap_naive = _topk_overlap(ranking_naive, ranking_real, TOP_K)
-                    overlap_pu    = _topk_overlap(ranking, ranking_real, TOP_K) if ranking.size else np.nan
+                    overlap_pu    = _topk_overlap(ranking, ranking_real, TOP_K)
 
-                    # Comparar métodos para obtener AUC
+                    # Comparar métodos: train para selección y entrenamiento, test para AUC
                     aucs = comparar_metodos(
-                        X, y, S, ranking if ranking.size else ranking_real,
+                        X_train, X_test, y_train, y_test,
+                        ranking,
                         ranking_naive, ranking_real, ranking_var, k=TOP_K
                     )
 
