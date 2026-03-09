@@ -4,7 +4,9 @@ import matplotlib
 matplotlib.use('Agg')  # backend sin ventana
 import matplotlib.pyplot as plt
 import mlflow
-from sklearn.datasets import load_breast_cancer
+from mlflow.tracking import MlflowClient
+from sklearn.datasets import fetch_openml
+from sklearn.preprocessing import LabelEncoder
 
 from sklearn.model_selection import train_test_split
 
@@ -31,13 +33,25 @@ def _ranking_instability(rankings_list):
 
 def main():
     """Ejecuta experimento según el modo configurado (single o sweep)."""
-    X, y = load_breast_cancer(return_X_y=True)
-    feature_names = load_breast_cancer().feature_names
+    sonar = fetch_openml(name='sonar', version=1, as_frame=False, parser='auto')
+    X = sonar.data.astype(float)
+    le = LabelEncoder()
+    y = le.fit_transform(sonar.target)  # Mine=0, Rock=1 (alfabético)
+    # Reordenar para que Mine (objeto metálico, "positivo") sea y=1
+    if le.classes_[0] == 'Mine':
+        y = 1 - y
+    feature_names = np.array(sonar.feature_names)
 
     # En modo single se itera una sola vez; en sweep se recorre la rejilla completa
     alphas = SWEEP_ALPHAS if RUN_MODE == 'sweep' else [ALPHA_TRUE]
     seeds  = SWEEP_SEEDS  if RUN_MODE == 'sweep' else [RANDOM_STATE]
 
+    client = MlflowClient()
+    exp = client.get_experiment_by_name(EXPERIMENT_NAME)
+    if exp is None:
+        client.create_experiment(EXPERIMENT_NAME, tags={"mlflow.experimentType": "TRAINING"})
+    elif "mlflow.experimentType" not in (exp.tags or {}):
+        client.set_experiment_tag(exp.experiment_id, "mlflow.experimentType", "TRAINING")
     mlflow.set_experiment(EXPERIMENT_NAME)
 
     with mlflow.start_run(run_name=RUN_NAME):
@@ -47,7 +61,7 @@ def main():
         n_negatives = int((y == 0).sum())
         class_balance = round(n_positives / n_samples, 4) # proporción de positivos (que tan minoritaria es la clase positiva)
 
-        mlflow.log_param("dataset",            "breast_cancer")
+        mlflow.log_param("dataset",            "sonar")
         mlflow.log_param("n_samples",          n_samples)
         mlflow.log_param("n_features",         n_features)
         mlflow.log_param("n_positives",        n_positives)
@@ -226,7 +240,7 @@ def main():
                 mlflow.log_metric(f'alpha_{a}_stability_pu',         float(row['stability_pu']))
                 mlflow.log_metric(f'alpha_{a}_stability_naive',      float(row['stability_naive']))
 
-            # --- Gráfico 1: AUC vs alpha por método ---
+            # Gráfico 1: AUC vs alpha por método
             metodos = ['PU_corregido', 'MI_naive', 'MI_real', 'Varianza']
             auc_summary = df.groupby('alpha_true')[
                 [f'auc_{m}' for m in metodos]
@@ -250,7 +264,7 @@ def main():
             plt.close(fig)
             mlflow.log_artifact('auc_vs_alpha.png')
 
-            # --- Gráfico 2: Correlación de Spearman vs alpha ---
+            # Gráfico 2: Correlación de Spearman vs alpha
             fig2, ax2 = plt.subplots(figsize=(8, 5))
             for label, col_mean, col_std in [
                 ('MI_real (ref.)', 'spearman_real_mean',  'spearman_real_std'),
@@ -275,7 +289,7 @@ def main():
             plt.close(fig2)
             mlflow.log_artifact('spearman_vs_alpha.png')
 
-            # --- Gráfico 3: Estabilidad del ranking vs alpha ---
+            # Gráfico 3: Estabilidad del ranking vs alpha
             fig3, ax3 = plt.subplots(figsize=(8, 5))
             for label, col in [
                 ('PU_corregido', 'stability_pu'),
