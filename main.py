@@ -33,14 +33,14 @@ def _ranking_instability(rankings_list):
 
 def main():
     """Ejecuta experimento según el modo configurado (single o sweep)."""
-    sonar = fetch_openml(name='sonar', version=1, as_frame=False, parser='auto')
-    X = sonar.data.astype(float)
+    ionosphere = fetch_openml(name='ionosphere', version=1, as_frame=False, parser='auto')
+    X = ionosphere.data.astype(float)
     le = LabelEncoder()
-    y = le.fit_transform(sonar.target)  # Mine=0, Rock=1 (alfabético)
-    # Reordenar para que Mine (objeto metálico, "positivo") sea y=1
-    if le.classes_[0] == 'Mine':
+    y = le.fit_transform(ionosphere.target)  # b=0, g=1 (alfabético)
+    # Reordenar para que 'good' (g, señal válida, "positivo") sea y=1
+    if le.classes_[0] == 'g':
         y = 1 - y
-    feature_names = np.array(sonar.feature_names)
+    feature_names = np.array(ionosphere.feature_names)
 
     # En modo single se itera una sola vez; en sweep se recorre la rejilla completa
     alphas = SWEEP_ALPHAS if RUN_MODE == 'sweep' else [ALPHA_TRUE]
@@ -61,7 +61,7 @@ def main():
         n_negatives = int((y == 0).sum())
         class_balance = round(n_positives / n_samples, 4) # proporción de positivos (que tan minoritaria es la clase positiva)
 
-        mlflow.log_param("dataset",            "sonar")
+        mlflow.log_param("dataset",            "ionosphere")
         mlflow.log_param("n_samples",          n_samples)
         mlflow.log_param("n_features",         n_features)
         mlflow.log_param("n_positives",        n_positives)

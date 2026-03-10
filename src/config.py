@@ -13,5 +13,5 @@ NOISE_LEVEL = 0
 
 # Parámetros generales
 TOP_K = 10
-EXPERIMENT_NAME = "sonar"
+EXPERIMENT_NAME = "ionosphere"
 RUN_NAME = "v1.0.0"
