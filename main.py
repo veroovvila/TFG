@@ -55,7 +55,9 @@ def main():
                     with zf.open(m) as src, open(dest, 'wb') as dst:
                         dst.write(src.read())
     parts = load_svmlight_files(
-        [os.path.join(_cache, f'batch{i}.dat') for i in range(1, 11)], n_features=128
+        [os.path.join(_cache, f'batch{i}.dat')
+         for i in ([SINGLE_BATCH] if SINGLE_BATCH is not None else range(1, 11))],
+        n_features=128
     )
     X = np.vstack([parts[i].toarray() for i in range(0, len(parts), 2)])
     y_raw = np.concatenate([parts[i] for i in range(1, len(parts), 2)]).astype(int)
@@ -83,6 +85,7 @@ def main():
 
         mlflow.log_param("dataset",            "gas_sensor_drift")
         mlflow.log_param("positive_class",        "Ethanol (class 1)")
+        mlflow.log_param("single_batch",          str(SINGLE_BATCH) if SINGLE_BATCH is not None else "all")
         mlflow.log_param("n_samples",          n_samples)
         mlflow.log_param("n_features",         n_features)
         mlflow.log_param("n_positives",        n_positives)
