@@ -5,9 +5,11 @@ matplotlib.use('Agg')  # backend sin ventana
 import matplotlib.pyplot as plt
 import mlflow
 from mlflow.tracking import MlflowClient
-from sklearn.datasets import fetch_openml
-from sklearn.preprocessing import LabelEncoder
-
+import io
+import os
+import urllib.request
+import zipfile
+from sklearn.datasets import load_svmlight_files
 from sklearn.model_selection import train_test_split
 
 from src.data_utiles import generar_etiquetas_pu, añadir_ruido_gaussiano
@@ -33,14 +35,32 @@ def _ranking_instability(rankings_list):
 
 def main():
     """Ejecuta experimento según el modo configurado (single o sweep)."""
-    ionosphere = fetch_openml(name='ionosphere', version=1, as_frame=False, parser='auto')
-    X = ionosphere.data.astype(float)
-    le = LabelEncoder()
-    y = le.fit_transform(ionosphere.target)  # b=0, g=1 (alfabético)
-    # Reordenar para que 'good' (g, señal válida, "positivo") sea y=1
-    if le.classes_[0] == 'g':
-        y = 1 - y
-    feature_names = np.array(ionosphere.feature_names)
+    # Gas Sensor Array Drift Dataset (UCI)
+    # 13 910 muestras, 128 features (16 sensores × 8 estadísticos), 6 gases
+    # Positivo: clase 1 (Etanol); negativo: el resto
+    _cache = os.path.join('data', 'gas_sensor_drift')
+    os.makedirs(_cache, exist_ok=True)
+    if not os.path.exists(os.path.join(_cache, 'batch1.dat')):
+        print('Descargando Gas Sensor Array Drift Dataset...', flush=True)
+        req = urllib.request.Request(
+            'https://archive.ics.uci.edu/ml/machine-learning-databases/00224/Dataset.zip',
+            headers={'User-Agent': 'Mozilla/5.0'}
+        )
+        with urllib.request.urlopen(req, timeout=120) as r:
+            raw = r.read()
+        with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+            for m in zf.namelist():
+                if m.endswith('.dat'):
+                    dest = os.path.join(_cache, os.path.basename(m))
+                    with zf.open(m) as src, open(dest, 'wb') as dst:
+                        dst.write(src.read())
+    parts = load_svmlight_files(
+        [os.path.join(_cache, f'batch{i}.dat') for i in range(1, 11)], n_features=128
+    )
+    X = np.vstack([parts[i].toarray() for i in range(0, len(parts), 2)])
+    y_raw = np.concatenate([parts[i] for i in range(1, len(parts), 2)]).astype(int)
+    y = (y_raw == 1).astype(int)  # Etanol (clase 1) = positivo; resto = negativo
+    feature_names = np.array([f'sensor{(i // 8) + 1}_feat{(i % 8) + 1}' for i in range(128)])
 
     # En modo single se itera una sola vez; en sweep se recorre la rejilla completa
     alphas = SWEEP_ALPHAS if RUN_MODE == 'sweep' else [ALPHA_TRUE]
@@ -61,7 +81,8 @@ def main():
         n_negatives = int((y == 0).sum())
         class_balance = round(n_positives / n_samples, 4) # proporción de positivos (que tan minoritaria es la clase positiva)
 
-        mlflow.log_param("dataset",            "ionosphere")
+        mlflow.log_param("dataset",            "gas_sensor_drift")
+        mlflow.log_param("positive_class",        "Ethanol (class 1)")
         mlflow.log_param("n_samples",          n_samples)
         mlflow.log_param("n_features",         n_features)
         mlflow.log_param("n_positives",        n_positives)

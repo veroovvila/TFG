@@ -13,5 +13,5 @@ NOISE_LEVEL = 0.5
 
 # Parámetros generales
 TOP_K = 10
-EXPERIMENT_NAME = "ionosphere"
+EXPERIMENT_NAME = "gas_sensor_drift"
 RUN_NAME = "v1.0.0"

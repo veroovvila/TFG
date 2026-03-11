@@ -138,6 +138,8 @@ Thumbs.db
 *.feather
 *.pkl
 *.pickle
+data/
+*.dat
 
 # OS
 .DS_Store
