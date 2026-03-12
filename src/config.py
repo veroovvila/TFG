@@ -13,8 +13,5 @@ NOISE_LEVEL = 0
 
 # Parámetros generales
 TOP_K = 10
-EXPERIMENT_NAME = "gas_sensor_drift"
-RUN_NAME = "v3.0.0"
-
-# Batch único para aislar efecto drift (None = todos los batches; 1-10 = solo ese batch)
-SINGLE_BATCH = 1
+EXPERIMENT_NAME = "spambase"
+RUN_NAME = "v1.0.0"
