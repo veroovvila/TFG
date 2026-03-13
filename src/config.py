@@ -13,5 +13,6 @@ NOISE_LEVEL = 0
 
 # Parámetros generales
 TOP_K = 10
-EXPERIMENT_NAME = "spambase"
+EXPERIMENT_NAME = "miniboone"
 RUN_NAME = "v1.0.0"
+ 

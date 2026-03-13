@@ -154,3 +154,5 @@ mlflow.db
 .mlflow/
 mlflow.log
 mlartifacts/
+
+resultados/
