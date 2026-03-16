@@ -31,12 +31,12 @@ def _ranking_instability(rankings_list):
 
 def main():
     """Ejecuta experimento según el modo configurado (single o sweep)."""
-    # MiniBooNE Particle Identification Dataset (UCI via OpenML)
-    # 130 064 muestras, 50 features, binario: señal neutrino (1) / fondo (0)
-    # Escenario PU natural: detectores no etiquetan todos los eventos de señal
-    _dataset = fetch_openml(name="MiniBooNE", version=1, as_frame=False)
+    # MAGIC Gamma Telescope Dataset (UCI via OpenML)
+    # 19 020 muestras, 10 features, binario: gamma (1) / hadron (0)
+    # Escenario PU natural: clasificación de eventos Cherenkov
+    _dataset = fetch_openml(name="MagicTelescope", version=1, as_frame=False)
     X = _dataset.data
-    y = (_dataset.target == 'True').astype(int)
+    y = (_dataset.target == 'g').astype(int)
     feature_names = np.array(_dataset.feature_names)
 
     # En modo single se itera una sola vez; en sweep se recorre la rejilla completa
@@ -58,8 +58,8 @@ def main():
         n_negatives = int((y == 0).sum())
         class_balance = round(n_positives / n_samples, 4) # proporción de positivos (que tan minoritaria es la clase positiva)
 
-        mlflow.log_param("dataset",       "miniboone")
-        mlflow.log_param("positive_class", "neutrino signal (1)")
+        mlflow.log_param("dataset",       "magic_telescope")
+        mlflow.log_param("positive_class", "gamma ray (g)")
         mlflow.log_param("n_samples",      n_samples)
         mlflow.log_param("n_features",         n_features)
         mlflow.log_param("n_positives",        n_positives)

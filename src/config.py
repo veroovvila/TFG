@@ -13,6 +13,6 @@ NOISE_LEVEL = 0
 
 # Parámetros generales
 TOP_K = 10
-EXPERIMENT_NAME = "miniboone"
+EXPERIMENT_NAME = "magic_telescope"
 RUN_NAME = "v1.0.0"
  
